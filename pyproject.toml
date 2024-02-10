@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "pypoolsync"
+version = "0.0.1"
+description = "Python package for interacting with Poolsync devices"
+authors = ["John Gemkow"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/jgemkow/pypoolsync"
+repository = "https://github.com/jgemkow/pypoolsync"
+keywords = ["Poolsync", "Chlorsync", "SWG", "python"]
+include = ["pypoolsync/py.typed"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+boto3 = "^1.27.1"
+pycognito = "^2023.5.0"
+pyjwt = "^2.8.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+flake8 = "^6.0.0"
+isort = "^5.12.0"
+mypy = "^1.4.1"
+pydocstyle = "^6.3.0"
+pylint = "^2.17.4"
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+tox = "^4.6.3"
+pytest-timeout = "^2.1.0"
+pytest-asyncio = "^0.21.0"
+
+[tool.poetry.group.demo.dependencies]
+python-dotenv = "^1.0.0"
+deepdiff = "^6.3.1"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
+pattern = "default-unprefixed"
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning"]
+build-backend = "poetry_dynamic_versioning.backend"
