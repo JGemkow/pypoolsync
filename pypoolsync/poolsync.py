@@ -179,6 +179,10 @@ class Poolsync:
             }
         return {}
 
+    def refresh_tokens(self) -> None:
+        """ Refresh the tokens currently in use. """
+        self._user.renew_access_token()
+
     def authenticate(self, password: str) -> None:
         """Authenticate a user."""
         
@@ -192,7 +196,7 @@ class Poolsync:
         """Logout of all clients (including app)."""
         self.get_user().logout()
 
-    def __request(self, method: str, url: str, data: Any = None, **kwargs: Any) -> Any:
+    def __request(self, method: str, url: str, data: Any = None, shouldRetry: bool = True, **kwargs: Any) -> Any:
         """Make a request."""
         if (data == None):
             _LOGGER.debug("Making %s request to %s with %s", method, url, redact(kwargs))
@@ -211,7 +215,11 @@ class Poolsync:
         _LOGGER.debug(
             "Received %s response from %s: %s", response.status_code, url, redact(json)
         )
-        if (status_code := response.status_code) != 200:
+        if (status_code := response.status_code) == 401 and (json.get("message") == "The incoming token has expired" or json.get("message") == "Token has expired") and shouldRetry:
+            _LOGGER.debug("Refreshing tokens and retrying request")
+            self.refresh_tokens()
+            return self.__request(method, url, data, shouldRetry=False, **kwargs)
+        elif (status_code := response.status_code) != 200:
             _LOGGER.error("Status: %s - %s", status_code, json)
             response.raise_for_status()
         return json
