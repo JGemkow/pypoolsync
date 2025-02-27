@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pypoolsync"
-version = "0.1.0"
+version = "0.1.2"
 description = "Python package for interacting with Poolsync devices"
 authors = ["John Gemkow"]
 license = "MIT"

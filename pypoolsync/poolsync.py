@@ -7,14 +7,10 @@ from typing import Any, Final
 from urllib.parse import urljoin
 
 import requests
-from botocore.exceptions import ClientError
-from pycognito import Cognito
 
-from .exceptions import PoolsyncAuthenticationError
+from .exceptions import PoolsyncApiException, PoolsyncAuthenticationError
 from .utils import decode, redact
 import json as jsonLib
-
-import jwt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,7 +58,7 @@ class Poolsync:
         return self._refresh_token
     
     
-    def get_hub_devices(self) -> list[PoolsyncDevice]:
+    def get_all_hub_devices(self) -> list[PoolsyncDevice]:
         """Get devices for an account."""
         devices = []
         raw_devices_from_api = self.__get("things/me/devices")
@@ -90,6 +86,25 @@ class Poolsync:
                                 device_type=raw_devices_from_api[j]['deviceType'][str(i)]
                             ))
         return devices
+    
+    def get_hub_devices(self, hub_id: str) -> list[PoolsyncDevice]:
+        """Get devices for based on hub_id."""
+        
+        devices = []
+        allDevices = self.get_all_hub_devices()
+        for i in range(0, len(allDevices)):
+            if allDevices[i].hub_id == hub_id:
+                devices.append(allDevices[i])
+        return devices
+    
+    def get_hub_device(self, hub_id: str, device_index: int) -> PoolsyncDevice:
+        """Get specific device for an account based on ID and index."""
+
+        devices = self.get_hub_devices(hub_id);
+        for i in range(0, 16): 
+            if devices[i].device_index == device_index:
+                return devices[i]
+        return {}
             
     def __update_hub_device(self, hub_id: str, data: Any) -> Any:
         """Update device."""
@@ -147,6 +162,9 @@ class Poolsync:
         except Exception as err:
             _LOGGER.error(err)
             raise PoolsyncAuthenticationError(err) from err
+        
+    def is_logged_in(self) -> bool:
+        return self.access_token != None and self.refresh_token != None
 
     def logout(self) -> None:
         """Logout of all clients (including app)."""
@@ -178,9 +196,12 @@ class Poolsync:
             _LOGGER.debug("Refreshing tokens and retrying request")
             self.refresh_tokens()
             return self.__request(method, url, data, should_retry=False, **kwargs)
+        elif (status_code := response.status_code) == 401 and (json.get("error") == "Did not pass authentication.") and should_retry == False:
+            _LOGGER.debug("Could not refresh token.")
+            raise PoolsyncAuthenticationError
         elif (status_code := response.status_code) != 200:
             _LOGGER.error("Status: %s - %s", status_code, json)
-            response.raise_for_status()
+            raise PoolsyncApiException
         return json
 
     def __get(self, url: str, **kwargs: Any) -> Any:
