@@ -1,7 +1,5 @@
 """Poolsync account."""
 from __future__ import annotations
-from datetime import datetime, timezone
-from time import time
 from typing import List
 
 import logging
@@ -12,7 +10,6 @@ import requests
 from botocore.exceptions import ClientError
 from pycognito import Cognito
 
-from .const import CLIENT_ID, IDENTITY_POOL_ID, REGION_NAME, USER_POOL_ID
 from .exceptions import PoolsyncAuthenticationError
 from .utils import decode, redact
 import json as jsonLib
@@ -21,204 +18,166 @@ import jwt
 
 _LOGGER = logging.getLogger(__name__)
 
-BASE_URL: Final = "https://cpxc1vu5ul.execute-api.us-east-1.amazonaws.com"
-
-class PoolsyncHub:
-    def __init__(self, hubId: str):
-        self.hubId: str = hubId
+BASE_URL: Final = "https://lsx6q9luzh.execute-api.us-east-1.amazonaws.com/api/app/"
 
 class PoolsyncDevice:
-    def __init__(self, hubId: str, deviceIndex: int, deviceType: str, deviceName: str | None = ""):
-        self.hubId: str = hubId
-        self.deviceIndex: str = deviceIndex
-        self.deviceType: str = deviceType
-        self.deviceName: str | None = deviceName 
+    def __init__(self, hub_id: str, device_index: int, device_type: str, device_name: str | None = ""):
+        self.hub_id: str = hub_id
+        self.device_index: str = device_index
+        self.device_type: str = device_type
+        self.device_name: str | None = device_name 
 
 class PoolSyncChlorsyncSWG(PoolsyncDevice):
-    def __init__(self, hubId: str, deviceIndex: int, deviceType: str, deviceName: str | None, chlorOutput: int, waterTemp: int, saltLevel: int, flowRate: int):
-        PoolsyncDevice.__init__(self, hubId=hubId, deviceIndex=deviceIndex, deviceType=deviceType, deviceName=deviceName)
+    def __init__(self, hub_id: str, device_index: int, device_type: str, device_name: str | None, chlor_output: int, water_temp: int, salt_level: int, flow_rate: int):
+        PoolsyncDevice.__init__(self, hub_id=hub_id, device_index=device_index, device_type=device_type, device_name=device_name)
 
-        self.chlorOutput = chlorOutput
-        self.waterTemp = waterTemp
-        self.saltLevel = saltLevel
-        self.flowRate = flowRate
+        self.chlor_output = chlor_output
+        self.water_temp = water_temp
+        self.salt_level = salt_level
+        self.flow_rate = flow_rate
 
 class Poolsync:
     """Poolsync account."""
-
-    _user: Cognito | None = None
 
     def __init__(
         self,
         *,
         username: str | None = None,
         access_token: str | None = None,
-        id_token: str | None = None,
         refresh_token: str | None = None,
     ) -> None:
         """Initialize."""
         self._username = username
         self._access_token = access_token
-        self._id_token = id_token
         self._refresh_token = refresh_token
 
     @property
     def access_token(self) -> str | None:
         """Return the access token."""
-        return self._user.access_token if self._user else self._access_token
-
-    @property
-    def id_token(self) -> str | None:
-        """Return the id token."""
-        return self._user.id_token if self._user else self._id_token
+        return self._access_token
 
     @property
     def refresh_token(self) -> str | None:
         """Return the refresh token."""
-        return self._user.refresh_token if self._user else self._refresh_token
+        return self._refresh_token
     
-    def get_user_id(self) -> str:
-        return jwt.decode(self._user.access_token, options={"verify_signature": False})['username']
-
-    def get_hubs(self) -> List[PoolsyncDevice]:
-        """Get hubs."""
-        userName = self.get_user_id()
-        rawDevicesFromAPI = self.__get("/v4/users/" + userName + "/things")
+    
+    def get_hub_devices(self) -> list[PoolsyncDevice]:
+        """Get devices for an account."""
         devices = []
-        for item in rawDevicesFromAPI['things']:
-            devices.append(
-                PoolsyncHub(
-                    hubId=item
-                )
-            )
-        return devices
+        raw_devices_from_api = self.__get("things/me/devices")
     
-    def get_hubdevices(self, hubId: str) -> list[PoolsyncDevice]:
-        """Get devices for a hub."""
-        devices = []
-        rawDevicesFromAPI = self.__get("/v3/things/" + hubId)
-    
-        for i in range(0, 16):
-            if rawDevicesFromAPI['state']['reported']['deviceType'][str(i)] != "":
-                devices.append(
-                    PoolsyncDevice(
-                        hubId=hubId,
-                        deviceIndex=i,
-                        deviceType=rawDevicesFromAPI['state']['reported']['deviceType'][str(i)]
-                    )
-                )
+        for j in range(0, len(raw_devices_from_api)):
+            hub_id = raw_devices_from_api[j]['poolSync']['system']['macAddr']
+            for i in range(0, 16):
+                if raw_devices_from_api[j]['deviceType'][str(i)] != "":
+                    match raw_devices_from_api[j]['deviceType'][str(i)]:
+                        case "chlorSync":
+                            devices.append(PoolSyncChlorsyncSWG(
+                                hub_id=hub_id,
+                                device_index=i,
+                                device_type=raw_devices_from_api[j]['deviceType'][str(i)],
+                                device_name=raw_devices_from_api[j]['devices'][str(i)]['nodeAttr']['name'],
+                                chlor_output=raw_devices_from_api[j]['devices'][str(i)]['config']['chlorOutput'],
+                                water_temp=raw_devices_from_api[j]['devices'][str(i)]['status']['waterTemp'],
+                                salt_level=raw_devices_from_api[j]['devices'][str(i)]['status']['saltPPM'],
+                                flow_rate=raw_devices_from_api[j]['devices'][str(i)]['status']['flowRate']
+                            ))
+                        case _:
+                            devices.append(PoolsyncDevice(
+                                hub_id=hub_id,
+                                device_index=i,
+                                device_type=raw_devices_from_api[j]['deviceType'][str(i)]
+                            ))
         return devices
-
-    def get_hubdevicedetails(self, device: PoolsyncDevice) -> PoolsyncDevice:
-        """Get device."""
-        rawDeviceFromAPI = self.__get("/v3/things/" + device.hubId + "-" + str(device.deviceIndex))
-
-        match device.deviceType:
-            case "chlorSync":
-                return PoolSyncChlorsyncSWG(
-                    hubId=device.hubId,
-                    deviceIndex=device.deviceIndex,
-                    deviceType=device.deviceType,
-                    deviceName=rawDeviceFromAPI['state']['reported']['nodeAttr']['name'],
-                    chlorOutput=rawDeviceFromAPI['state']['reported']['config']['chlorOutput'],
-                    waterTemp=rawDeviceFromAPI['state']['reported']['status']['waterTemp'],
-                    saltLevel=rawDeviceFromAPI['state']['reported']['status']['saltPPM'],
-                    flowRate=rawDeviceFromAPI['state']['reported']['status']['flowRate']
-                )
-            case _:
-                return device
             
-    def __update_hubdevice(self, hubId: str, data: Any) -> Any:
+    def __update_hub_device(self, hub_id: str, data: Any) -> Any:
         """Update device."""
-        return self.__post("/v3/things/" + hubId, data)
+        return self.__post("things/" + hub_id, data)
 
-    def change_chlor_output(self, swg: PoolSyncChlorsyncSWG, newOutput: int) -> None:
-            self.__update_hubdevice(swg.hubId, {
-                "state": {
-                    "desired": {
-                        "devices": {
-                            str(swg.deviceIndex): {
-                                "config": {
-                                    "chlorOutput": newOutput
-                                }
-                            }
+    def change_chlor_output(self, swg: PoolSyncChlorsyncSWG, new_output: int) -> None:
+        """Change the chlor output of a salt water generator."""
+        self.__update_hub_device(swg.hub_id, 
+            {
+                "devices": {
+                    str(swg.device_index): {
+                        "config": {
+                            "chlorOutput": new_output
                         }
                     }
                 }
-            })
-
-    def get_user(self) -> Cognito:
-        """Return the Cognito user."""
-        
-        if self._user is None:
-            self._user = Cognito(
-                decode(USER_POOL_ID),
-                decode(CLIENT_ID),
-                username=self._username,
-                access_token=self.access_token,
-                id_token=self.id_token,
-                refresh_token=self.refresh_token,
-            )
-            if self.access_token or self.id_token:
-                try:
-                    self._user.check_token()
-                    self._user.verify_tokens()                    
-                except ClientError as err:
-                    _LOGGER.error(err)
-                    raise PoolsyncAuthenticationError(err) from err
-        
-        return self._user
-
-    def get_tokens(self) -> dict[str, str]:
-        """Return the tokens."""
-        if (user := self.get_user()).access_token:
-            return {
-                "access_token": user.access_token,
-                "id_token": user.id_token,
-                "refresh_token": user.refresh_token,
             }
-        return {}
+        )
 
     def refresh_tokens(self) -> None:
         """ Refresh the tokens currently in use. """
-        self._user.renew_access_token()
 
-    def authenticate(self, password: str) -> None:
-        """Authenticate a user."""
-        
         try:
-            self.get_user().authenticate(password=password)
-        except ClientError as err:
+            refreshResponse = requests.request(
+                "post", BASE_URL + "auth/token", timeout=30, data={
+                    "refresh": self.refresh_token
+                }
+            )
+            json = refreshResponse.json()
+
+            if refreshResponse.status_code != 200:
+                raise PoolsyncAuthenticationError(err) from err
+            else:
+                self._access_token = json['tokens']['access']
+        except Exception as err:
+            _LOGGER.error(err)
+            raise PoolsyncAuthenticationError(err) from err
+    def authenticate(self, password: str) -> None:
+        """Authenticate a user. This is now done by a custom API and not Cognito."""
+
+        try:
+            loginResponse = requests.request(
+                "post", BASE_URL + "auth/login", timeout=30, json={
+                    "email": self._username,
+                    "password": password
+                }
+            )
+            json = loginResponse.json()
+
+            if (loginResponse.status_code == 400) and (json.get("error") == "Incorrect username or password."):
+                raise PoolsyncAuthenticationError(err) from err
+            else:
+                self._access_token = json['tokens']['access']
+                self._refresh_token = json['tokens']['refresh']
+        except Exception as err:
             _LOGGER.error(err)
             raise PoolsyncAuthenticationError(err) from err
 
     def logout(self) -> None:
         """Logout of all clients (including app)."""
-        self.get_user().logout()
+        self.access_token = ""
+        self.refresh_token = ""
 
-    def __request(self, method: str, url: str, data: Any = None, shouldRetry: bool = True, **kwargs: Any) -> Any:
+    def __request(self, method: str, url: str, data: Any = None, should_retry: bool = True, **kwargs: Any) -> Any:
         """Make a request."""
-        if (data == None):
+        if (data is None):
             _LOGGER.debug("Making %s request to %s with %s", method, url, redact(kwargs))
             response = requests.request(
-                method, BASE_URL + url, headers={"Authorization": "Bearer "+ self.access_token}, timeout=30, **kwargs
+                method, BASE_URL + url, headers={"Authorization": self.access_token}, timeout=30, **kwargs
             )
             json = response.json()
         else:
-            jsonData=jsonLib.dumps(data)
             _LOGGER.debug("Making %s request to %s with payload of %s and with %s", method, url, data, redact(kwargs))
            
             response = requests.request(
-                method, BASE_URL + url, headers={"Authorization": "Bearer "+ self.access_token}, timeout=30, data=jsonData, **kwargs
+                method, BASE_URL + url, headers={"Authorization": self.access_token, "content-type": "application/json"}, timeout=30, data=jsonLib.dumps(data), **kwargs
             )
-            json = response.json()
+            try: 
+                json = response.json()
+            except:
+                json={}
         _LOGGER.debug(
             "Received %s response from %s: %s", response.status_code, url, redact(json)
         )
-        if (status_code := response.status_code) == 401 and (json.get("message") == "The incoming token has expired" or json.get("message") == "Token has expired") and shouldRetry:
+        if (status_code := response.status_code) == 401 and (json.get("error") == "Did not pass authentication.") and should_retry:
             _LOGGER.debug("Refreshing tokens and retrying request")
             self.refresh_tokens()
-            return self.__request(method, url, data, shouldRetry=False, **kwargs)
+            return self.__request(method, url, data, should_retry=False, **kwargs)
         elif (status_code := response.status_code) != 200:
             _LOGGER.error("Status: %s - %s", status_code, json)
             response.raise_for_status()
@@ -228,19 +187,14 @@ class Poolsync:
         """Make a get request."""
         return self.__request("get", url, **kwargs)
 
-    def __post(  # pylint: disable=unused-private-member
+    def __post(  
         self, url: str, data, **kwargs: Any
     ) -> Any:
         """Make a post request."""
         return self.__request("post", url, data, **kwargs)
 
-    def __put(  
+    def __put(  # pylint: disable=unused-private-member
         self, url: str, data, **kwargs: Any
     ) -> Any:
         """Make a put request."""
         return self.__request("put", url, data, **kwargs)
-
-    def __convert_timestamp(self, _ts: float) -> datetime:
-        """Convert a timestamp to a datetime."""
-        return datetime.fromtimestamp(_ts / (1000 if _ts > time() else 1), timezone.utc)
-
