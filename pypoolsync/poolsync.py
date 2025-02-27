@@ -142,6 +142,14 @@ class Poolsync:
         except Exception as err:
             _LOGGER.error(err)
             raise PoolsyncAuthenticationError(err) from err
+
+    def get_tokens(self) -> dict[str, str]:
+        """Return the tokens."""
+        return {
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+        }
+
     def authenticate(self, password: str) -> None:
         """Authenticate a user. This is now done by a custom API and not Cognito."""
 
@@ -155,7 +163,7 @@ class Poolsync:
             json = loginResponse.json()
 
             if (loginResponse.status_code == 400) and (json.get("error") == "Incorrect username or password."):
-                raise PoolsyncAuthenticationError(err) from err
+                raise PoolsyncAuthenticationError
             else:
                 self._access_token = json['tokens']['access']
                 self._refresh_token = json['tokens']['refresh']
