@@ -129,14 +129,13 @@ class Poolsync:
 
         try:
             refreshResponse = requests.request(
-                "post", BASE_URL + "auth/token", timeout=30, data={
+                "post", BASE_URL + "auth/token", headers={"Content-Type": "application/json"}, timeout=30, json={
                     "refresh": self.refresh_token
-                }
-            )
+                })
             json = refreshResponse.json()
 
             if refreshResponse.status_code != 200:
-                raise PoolsyncAuthenticationError(err) from err
+                raise PoolsyncAuthenticationError
             else:
                 self._access_token = json['tokens']['access']
         except Exception as err:
