@@ -9,12 +9,11 @@ from urllib.parse import urljoin
 import requests
 
 from .exceptions import PoolsyncApiException, PoolsyncAuthenticationError
+from .const import BASE_URL
 from .utils import decode, redact
 import json as jsonLib
 
 _LOGGER = logging.getLogger(__name__)
-
-BASE_URL: Final = "https://lsx6q9luzh.execute-api.us-east-1.amazonaws.com/api/app/"
 
 class PoolsyncDevice:
     def __init__(self, hub_id: str, device_index: int, device_type: str, device_name: str | None = ""):

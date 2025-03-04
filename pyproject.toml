@@ -25,6 +25,7 @@ pytest-cov = "^4.1.0"
 tox = "^4.6.3"
 pytest-timeout = "^2.1.0"
 pytest-asyncio = "^0.21.0"
+responses = "^0.25.6"
 
 [tool.poetry.group.demo.dependencies]
 python-dotenv = "^1.0.0"
